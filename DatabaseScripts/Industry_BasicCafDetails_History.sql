@@ -47,6 +47,13 @@ BEGIN
 END;
 GO
 
+IF COL_LENGTH('dbo.tbl_Industry_BasicCafDetails_History', 'PanNo') IS NULL
+BEGIN
+    ALTER TABLE dbo.tbl_Industry_BasicCafDetails_History
+    ADD PanNo NVARCHAR(50) NULL;
+END
+GO
+
 IF OBJECT_ID('dbo.tbl_Industry_BasicCafDetails_ProcessStatus', 'U') IS NULL
 BEGIN
     CREATE TABLE dbo.tbl_Industry_BasicCafDetails_ProcessStatus
@@ -63,6 +70,14 @@ BEGIN
         ON dbo.tbl_Industry_BasicCafDetails_ProcessStatus(CafPin);
 END;
 GO
+
+IF COL_LENGTH('dbo.tbl_Industry_BasicCafDetails_ProcessStatus', 'PanNo') IS NULL
+BEGIN
+    ALTER TABLE dbo.tbl_Industry_BasicCafDetails_ProcessStatus
+    ADD PanNo NVARCHAR(50) NULL;
+END
+GO
+
 
 IF OBJECT_ID('dbo.tbl_Industry_BasicCafDetails_ErrorLog', 'U') IS NULL
 BEGIN
@@ -87,7 +102,8 @@ BEGIN
     SET NOCOUNT ON;
 
     SELECT DISTINCT
-        LTRIM(RTRIM(cafPin)) AS cafPin
+        LTRIM(RTRIM(cafPin)) AS cafPin,
+		LTRIM(RTRIM(PANNumber)) AS panNo
     FROM dbo.tbl_IndustryServices_IncomingJson_Log
     WHERE cafPin IS NOT NULL
       AND LTRIM(RTRIM(cafPin)) <> ''
@@ -95,27 +111,32 @@ BEGIN
 END;
 GO
 
+
 CREATE OR ALTER PROCEDURE dbo.sp_Industry_GetFailedCafPinList_ForBasicCafDetails
 AS
 BEGIN
     SET NOCOUNT ON;
-    SELECT DISTINCT
-        ps.CafPin AS cafPin
+
+    SELECT
+        ps.CafPin AS cafPin,
+        ps.PanNo  AS panNo    
     FROM dbo.tbl_Industry_BasicCafDetails_ProcessStatus ps
     WHERE ps.ProcessStatus = 0
       AND (
-            ps.LastSuccessOn IS NULL  
+            ps.LastSuccessOn IS NULL
             OR ps.LastFailureOn > ps.LastSuccessOn
-          )
-    ;
+          );
 END;
+GO
+
 GO
 
 
 CREATE OR ALTER PROCEDURE dbo.sp_UpsertIndustryBasicCafProcessStatus
 (
     @CafPin NVARCHAR(20),
-    @ProcessStatus TINYINT
+    @ProcessStatus TINYINT,
+	@PanNo  NVARCHAR(50) = NULL
 )
 AS
 BEGIN
@@ -127,6 +148,7 @@ BEGIN
         SET
             ProcessStatus = @ProcessStatus,
             LastProcessedOn = GETDATE(),
+			PanNo   = COALESCE(@PanNo, PanNo),
             LastSuccessOn = CASE WHEN @ProcessStatus = 1 THEN GETDATE() ELSE LastSuccessOn END,
             LastFailureOn = CASE WHEN @ProcessStatus = 0 THEN GETDATE() ELSE LastFailureOn END
         WHERE CafPin = @CafPin;
@@ -135,11 +157,12 @@ BEGIN
     BEGIN
         INSERT INTO dbo.tbl_Industry_BasicCafDetails_ProcessStatus
         (
-            CafPin, ProcessStatus, LastProcessedOn, LastSuccessOn, LastFailureOn
+            CafPin,PanNo, ProcessStatus, LastProcessedOn, LastSuccessOn, LastFailureOn
         )
         VALUES
         (
             @CafPin,
+			@PanNo,
             @ProcessStatus,
             GETDATE(),
             CASE WHEN @ProcessStatus = 1 THEN GETDATE() ELSE NULL END,
@@ -372,6 +395,7 @@ CREATE OR ALTER PROCEDURE dbo.sp_UpsertIndustryBasicCafDetailsHistory
     @CurrentVillage NVARCHAR(200) = NULL,
     @CurrentCafPin NVARCHAR(20),
     @CurrentCafType NVARCHAR(100) = NULL,
+	@PanNo NVARCHAR(50)   = NULL,
     @IsHistoryChanged BIT OUTPUT
 )
 AS
@@ -417,7 +441,7 @@ BEGIN
                 PreviousBlock, CurrentBlock,
                 PreviousVillage, CurrentVillage,
                 PreviousCafPin, CurrentCafPin,
-                PreviousCafType, CurrentCafType,
+                PreviousCafType, CurrentCafType, PanNo,
                 Status, ProcessedOn
             )
             VALUES
@@ -429,7 +453,7 @@ BEGIN
                 NULL, @CurrentBlock,
                 NULL, @CurrentVillage,
                 NULL, @CurrentCafPin,
-                NULL, @CurrentCafType,
+                NULL, @CurrentCafType,@PanNo,
                 1, GETDATE()
             );
 
@@ -438,7 +462,7 @@ BEGIN
                 @CurrentBusinessEntity,
                 @CurrentBusinessEntityType,
                 @CurrentSiteAddress,
-                @CurrentCafPin;
+                @PanNo;
 
             COMMIT TRANSACTION;
             RETURN;
@@ -457,7 +481,7 @@ BEGIN
                 PreviousBlock, CurrentBlock,
                 PreviousVillage, CurrentVillage,
                 PreviousCafPin, CurrentCafPin,
-                PreviousCafType, CurrentCafType,
+                PreviousCafType, CurrentCafType,PanNo,
                 Status, ProcessedOn
             )
             VALUES
@@ -469,7 +493,7 @@ BEGIN
                 @PrevBlock, @CurrentBlock,
                 @PrevVillage, @CurrentVillage,
                 @PrevCafPin, @CurrentCafPin,
-                @PrevCafType, @CurrentCafType,
+                @PrevCafType, @CurrentCafType,@PanNo,
                 1, GETDATE()
             );
 
@@ -478,7 +502,7 @@ BEGIN
                 @CurrentBusinessEntity,
                 @CurrentBusinessEntityType,
                 @CurrentSiteAddress,
-                @CurrentCafPin;
+                @PanNo;
         END
 
         UPDATE dbo.tbl_Industry_BasicCafDetails_History

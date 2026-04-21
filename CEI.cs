@@ -33,9 +33,9 @@ namespace CEI_PRoject
         private int tCounter = 1;
         private int lCounter = 1;
         private SqlParameter outputParam;
+        #region Bind DropDown Draw State
 
-
- public Industry_BasicCafDetails_Model GetIndustryBasicCafDetails(string cafPin)
+        public Industry_BasicCafDetails_Model GetIndustryBasicCafDetails(string cafPin)
         {
             if (string.IsNullOrWhiteSpace(cafPin))
             {
@@ -58,12 +58,12 @@ namespace CEI_PRoject
                 ProjectId = null,
                 ServiceId = null
             };
-            string accessToken = TokenManagerConst.GetAccessToken(tokenContext);
+            //string accessToken = TokenManagerConst.GetAccessToken(tokenContext);
 
             using (WebClient client = new WebClient())
             {
                 client.Headers[HttpRequestHeader.Accept] = "application/json";
-                client.Headers[HttpRequestHeader.Authorization] = "Bearer " + accessToken;
+                //client.Headers[HttpRequestHeader.Authorization] = "Bearer " + accessToken;
                 string response = client.DownloadString(endpoint);
                 return JsonConvert.DeserializeObject<Industry_BasicCafDetails_Model>(response);
             }
@@ -95,28 +95,30 @@ namespace CEI_PRoject
                 {
                     continue;
                 }
+                string panNo = cafPinTable.Columns.Contains("panNo") ? Convert.ToString(row["panNo"]) : null;
 
                 try
                 {
                     Industry_BasicCafDetails_Model cafDetails = GetIndustryBasicCafDetails(cafPin);
                     if (cafDetails != null)
                     {
+                        cafDetails.PanNo = panNo;
                         bool isHistoryChanged = SaveIndustryBasicCafDetailsHistory(cafDetails);
                         if (isHistoryChanged)
                         {
-                            UpdateIndustryBasicCafProcessStatus(cafPin, 1);
+                            UpdateIndustryBasicCafProcessStatus(cafPin, 1, panNo);
                         }
                         cafDetailsList.Add(cafDetails);
                     }
                     else
                     {
-                        UpdateIndustryBasicCafProcessStatus(cafPin, 0);
+                        UpdateIndustryBasicCafProcessStatus(cafPin, 0, panNo);
                         LogIndustryBasicCafDetailsError(cafPin, BuildBasicCafDetailsEndpoint(cafPin), "API response was null.", null);
                     }
                 }
                 catch (Exception ex)
                 {
-                    UpdateIndustryBasicCafProcessStatus(cafPin, 0);
+                    UpdateIndustryBasicCafProcessStatus(cafPin, 0, panNo);
                     LogIndustryBasicCafDetailsError(cafPin, BuildBasicCafDetailsEndpoint(cafPin), ex.Message, ex.StackTrace);
                     continue;
                 }
@@ -144,6 +146,7 @@ namespace CEI_PRoject
                 command.Parameters.AddWithValue("@CurrentVillage", (object)cafDetails.Village ?? DBNull.Value);
                 command.Parameters.AddWithValue("@CurrentCafPin", (object)cafDetails.CafPin ?? DBNull.Value);
                 command.Parameters.AddWithValue("@CurrentCafType", (object)cafDetails.CafType ?? DBNull.Value);
+                command.Parameters.AddWithValue("@PanNo", (object)cafDetails.PanNo ?? DBNull.Value); 
                 SqlParameter isHistoryChangedParam = new SqlParameter("@IsHistoryChanged", SqlDbType.Bit)
                 {
                     Direction = ParameterDirection.Output
@@ -174,7 +177,7 @@ namespace CEI_PRoject
             return $"{normalizedBaseUrl}/api/basicCafDetails/{HttpUtility.UrlEncode((cafPin ?? string.Empty).Trim())}";
         }
 
-        public void UpdateIndustryBasicCafProcessStatus(string cafPin, byte processStatus)
+        public void UpdateIndustryBasicCafProcessStatus(string cafPin, byte processStatus, string panNo = null)
         {
             if (string.IsNullOrWhiteSpace(cafPin))
             {
@@ -187,6 +190,7 @@ namespace CEI_PRoject
                 command.CommandType = CommandType.StoredProcedure;
                 command.Parameters.AddWithValue("@CafPin", cafPin.Trim());
                 command.Parameters.AddWithValue("@ProcessStatus", processStatus);
+                command.Parameters.AddWithValue("@PanNo", (object)panNo ?? DBNull.Value);
 
                 connection.Open();
                 command.ExecuteNonQuery();
@@ -209,8 +213,6 @@ namespace CEI_PRoject
             }
         }
 
-
-       
 
     }
 }

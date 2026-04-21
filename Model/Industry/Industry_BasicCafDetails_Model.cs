@@ -15,5 +15,7 @@ namespace CEIHaryana.Model.Industry
         public string Village { get; set; }
         public string CafPin { get; set; }
         public string CafType { get; set; }
+
+        public string PanNo { get; set; }
     }
 }
