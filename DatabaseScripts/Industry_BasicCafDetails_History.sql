@@ -1,3 +1,14 @@
+
+--select  * From tbl_Industry_BasicCafDetails_ErrorLog
+
+--select * From tbl_Industry_BasicCafDetails_ProcessStatus
+
+--select * From tbl_Industry_BasicCafDetails_History
+
+--select * from tbl_WorkIntimation_NameOfOwner_Updation_Log
+--select * From tbl_RegistrationSiteOwner_NameOfOwner_Updation_Log
+
+
 IF OBJECT_ID('dbo.tbl_Industry_BasicCafDetails_History', 'U') IS NULL
 BEGIN
     CREATE TABLE dbo.tbl_Industry_BasicCafDetails_History
@@ -42,7 +53,7 @@ BEGIN
     (
         Id BIGINT IDENTITY(1,1) PRIMARY KEY,
         CafPin NVARCHAR(20) NOT NULL,
-        ProcessStatus TINYINT NOT NULL, -- 1 = success, 0 = failed
+        ProcessStatus TINYINT NOT NULL, 
         LastProcessedOn DATETIME NOT NULL CONSTRAINT DF_tbl_Industry_BasicCafDetails_ProcessStatus_LastProcessedOn DEFAULT (GETDATE()),
         LastSuccessOn DATETIME NULL,
         LastFailureOn DATETIME NULL
@@ -79,9 +90,27 @@ BEGIN
         LTRIM(RTRIM(cafPin)) AS cafPin
     FROM dbo.tbl_IndustryServices_IncomingJson_Log
     WHERE cafPin IS NOT NULL
-      AND LTRIM(RTRIM(cafPin)) <> '';
+      AND LTRIM(RTRIM(cafPin)) <> ''
+	  and cafpin = '4659013320'
 END;
 GO
+
+CREATE OR ALTER PROCEDURE dbo.sp_Industry_GetFailedCafPinList_ForBasicCafDetails
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT DISTINCT
+        ps.CafPin AS cafPin
+    FROM dbo.tbl_Industry_BasicCafDetails_ProcessStatus ps
+    WHERE ps.ProcessStatus = 0
+      AND (
+            ps.LastSuccessOn IS NULL  
+            OR ps.LastFailureOn > ps.LastSuccessOn
+          )
+    ;
+END;
+GO
+
 
 CREATE OR ALTER PROCEDURE dbo.sp_UpsertIndustryBasicCafProcessStatus
 (
@@ -144,32 +173,69 @@ GO
 
 
 
+IF COL_LENGTH('dbo.tbl_WorkIntimation', 'BusinessEntityType') IS NULL
+BEGIN
+		ALTER TABLE tbl_WorkIntimation 
+		ADD BusinessEntityType NVARCHAR(100);
+END
 
-ALTER TABLE tbl_WorkIntimation 
-ADD BusinessEntityType NVARCHAR(100);
 GO
 
-ALTER TABLE tbl_RegistrationSiteOwner 
-ADD BusinessEntityType NVARCHAR(100);
+IF COL_LENGTH('dbo.tbl_RegistrationSiteOwner', 'BusinessEntityType') IS NULL
+BEGIN
+	ALTER TABLE tbl_RegistrationSiteOwner 
+	ADD BusinessEntityType NVARCHAR(100);
+END
+
 GO
 
+IF OBJECT_ID('dbo.tbl_WorkIntimation_History_ApiUpdation_Log', 'U') IS NULL
+BEGIN
 
-ALTER TABLE tbl_WorkIntimation_NameOfOwner_Updation_Log
-ADD OldBusinessEntity NVARCHAR(255),
-    NewBusinessEntity NVARCHAR(255),
-    OldBusinessEntityType NVARCHAR(255),
-    NewBusinessEntityType NVARCHAR(255),
-    OldSiteAddress NVARCHAR(500),
-    NewSiteAddress NVARCHAR(500);
-GO
+	CREATE TABLE [dbo].[tbl_WorkIntimation_History_ApiUpdation_Log](
+		[LogID] [int] IDENTITY(1,1) NOT NULL,
+		[WorkIntimationID] [nvarchar](255) NULL,
+		[ModifiedBy] [nvarchar](50) NULL,
+		[ModifiedDate] [datetime] NULL,
+		[OldBusinessEntity] [nvarchar](255) NULL,
+		[NewBusinessEntity] [nvarchar](255) NULL,
+		[OldBusinessEntityType] [nvarchar](255) NULL,
+		[NewBusinessEntityType] [nvarchar](255) NULL,
+		[OldSiteAddress] [nvarchar](500) NULL,
+		[NewSiteAddress] [nvarchar](500) NULL,
+	PRIMARY KEY CLUSTERED 
+	(
+		[LogID] ASC
+	)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+	) ON [PRIMARY]
 
-ALTER TABLE tbl_RegistrationSiteOwner_NameOfOwner_Updation_Log
-ADD OldBusinessEntity NVARCHAR(255),
-    NewBusinessEntity NVARCHAR(255),
-    OldBusinessEntityType NVARCHAR(255),
-    NewBusinessEntityType NVARCHAR(255),
-    OldSiteAddress NVARCHAR(500),
-    NewSiteAddress NVARCHAR(500);
+
+	ALTER TABLE [dbo].[tbl_WorkIntimation_History_ApiUpdation_Log] ADD  DEFAULT (getdate()) FOR [ModifiedDate]
+
+END
+
+
+IF OBJECT_ID('dbo.tbl_RegistrationSiteOwner_History_ApiUpdation_Log', 'U') IS NULL
+BEGIN
+	CREATE TABLE [dbo].[tbl_RegistrationSiteOwner_History_ApiUpdation_Log](
+		[LogID] [int] IDENTITY(1,1) NOT NULL,
+		[ID] [int] NOT NULL,
+		[OldBusinessEntity] [nvarchar](255) NULL,
+		[NewBusinessEntity] [nvarchar](255) NULL,
+		[OldBusinessEntityType] [nvarchar](255) NULL,
+		[NewBusinessEntityType] [nvarchar](255) NULL,
+		[OldSiteAddress] [nvarchar](500) NULL,
+		[NewSiteAddress] [nvarchar](500) NULL,
+		[ModifiedBy] [nvarchar](50) NULL,
+		[ModifiedDate] [datetime] NULL,
+	PRIMARY KEY CLUSTERED 
+	(
+		[LogID] ASC
+	)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+	) ON [PRIMARY]
+END
+
+ALTER TABLE [dbo].[tbl_RegistrationSiteOwner_History_ApiUpdation_Log] ADD  DEFAULT (getdate()) FOR [ModifiedDate]
 GO
 
 
@@ -179,16 +245,18 @@ GO
 
 CREATE PROCEDURE sp_UpsertIndustryBasicCafDetailsHistory_MainTablesUpdate
 (
-    @CurrentBusinessEntity NVARCHAR(50) = NULL,
+    @CurrentBusinessEntity NVARCHAR(200) = NULL,
     @CurrentBusinessEntityType NVARCHAR(100) = NULL,
-    @CurrentSiteAddress NVARCHAR(200) = NULL,
+    @CurrentSiteAddress NVARCHAR(800) = NULL,
     @PANNumber NVARCHAR(50)
 )
 AS
 BEGIN
     SET NOCOUNT ON;
 
-    INSERT INTO tbl_WorkIntimation_NameOfOwner_Updation_Log
+	BEGIN TRY
+
+    INSERT INTO tbl_WorkIntimation_History_ApiUpdation_Log
     (
         WorkIntimationID,
         OldBusinessEntity,
@@ -235,7 +303,7 @@ BEGIN
       );
 
 
-    INSERT INTO tbl_RegistrationSiteOwner_NameOfOwner_Updation_Log
+    INSERT INTO tbl_RegistrationSiteOwner_History_ApiUpdation_Log
     (
         ID,
         OldBusinessEntity,
@@ -278,6 +346,14 @@ BEGIN
          OR ISNULL(Address,'') <> ISNULL(@CurrentSiteAddress,'')
          OR ISNULL(BusinessEntityType,'') <> ISNULL(@CurrentBusinessEntityType,'')
       );
+	END TRY
+	BEGIN CATCH
+			SELECT 
+			ERROR_MESSAGE() AS ErrorMessage,
+			ERROR_LINE() AS ErrorLine,
+			ERROR_PROCEDURE() AS ErrorProcedure;
+		THROW;
+	END CATCH
 
 END;
 GO
@@ -404,18 +480,16 @@ BEGIN
                 @CurrentSiteAddress,
                 @CurrentCafPin;
         END
-        ELSE
-        BEGIN
-            UPDATE dbo.tbl_Industry_BasicCafDetails_History
-            SET ProcessedOn = GETDATE()
-            WHERE Id = (
-                SELECT TOP 1 Id
-                FROM dbo.tbl_Industry_BasicCafDetails_History
-                WHERE CurrentCafPin = @CurrentCafPin
-                ORDER BY Id DESC
-            );
-        END;
 
+        UPDATE dbo.tbl_Industry_BasicCafDetails_History
+        SET ProcessedOn = GETDATE()
+        WHERE Id = (
+            SELECT TOP 1 Id
+            FROM dbo.tbl_Industry_BasicCafDetails_History
+            WHERE CurrentCafPin = @CurrentCafPin
+            ORDER BY Id DESC
+        );
+  
         COMMIT TRANSACTION;
 
     END TRY
