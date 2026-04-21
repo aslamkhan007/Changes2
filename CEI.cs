@@ -33,7 +33,6 @@ namespace CEI_PRoject
         private int tCounter = 1;
         private int lCounter = 1;
         private SqlParameter outputParam;
-        #region Bind DropDown Draw State
 
         public Industry_BasicCafDetails_Model GetIndustryBasicCafDetails(string cafPin)
         {
@@ -213,6 +212,8 @@ namespace CEI_PRoject
             }
         }
 
+
+       
 
     }
 }
