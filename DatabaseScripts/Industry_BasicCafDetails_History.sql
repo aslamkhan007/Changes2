@@ -107,7 +107,7 @@ BEGIN
     FROM dbo.tbl_IndustryServices_IncomingJson_Log
     WHERE cafPin IS NOT NULL
       AND LTRIM(RTRIM(cafPin)) <> ''
-	  and cafpin = '4659013320'
+	  --and cafpin = '4659013320'
 END;
 GO
 
