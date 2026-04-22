@@ -306,7 +306,10 @@ BEGIN
       AND (
             ISNULL(NameOfAgency,'') <> ISNULL(@CurrentBusinessEntity,'')
          OR ISNULL(Address,'') <> ISNULL(@CurrentSiteAddress,'')
-         OR ISNULL(BusinessEntityType,'') <> ISNULL(@CurrentBusinessEntityType,'')
+		 OR (
+			 BusinessEntityType IS NOT NULL  AND ISNULL(BusinessEntityType, '') <> ISNULL(@CurrentBusinessEntityType, '')
+			)
+
       );
 
     UPDATE tbl_WorkIntimation
@@ -322,7 +325,9 @@ BEGIN
       AND (
             ISNULL(NameOfAgency,'') <> ISNULL(@CurrentBusinessEntity,'')
          OR ISNULL(Address,'') <> ISNULL(@CurrentSiteAddress,'')
-         OR ISNULL(BusinessEntityType,'') <> ISNULL(@CurrentBusinessEntityType,'')
+		 OR (
+			 BusinessEntityType IS NOT NULL  AND ISNULL(BusinessEntityType, '') <> ISNULL(@CurrentBusinessEntityType, '')
+			)
       );
 
 
@@ -352,7 +357,9 @@ BEGIN
       AND (
             ISNULL(NameOfAgency,'') <> ISNULL(@CurrentBusinessEntity,'')
          OR ISNULL(Address,'') <> ISNULL(@CurrentSiteAddress,'')
-         OR ISNULL(BusinessEntityType,'') <> ISNULL(@CurrentBusinessEntityType,'')
+		 OR (
+			 BusinessEntityType IS NOT NULL  AND ISNULL(BusinessEntityType, '') <> ISNULL(@CurrentBusinessEntityType, '')
+			)
       );
 
     UPDATE tbl_RegistrationSiteOwner
@@ -367,7 +374,9 @@ BEGIN
       AND (
             ISNULL(NameOfAgency,'') <> ISNULL(@CurrentBusinessEntity,'')
          OR ISNULL(Address,'') <> ISNULL(@CurrentSiteAddress,'')
-         OR ISNULL(BusinessEntityType,'') <> ISNULL(@CurrentBusinessEntityType,'')
+		 OR (
+			 BusinessEntityType IS NOT NULL  AND ISNULL(BusinessEntityType, '') <> ISNULL(@CurrentBusinessEntityType, '')
+			)
       );
 	END TRY
 	BEGIN CATCH
@@ -432,46 +441,72 @@ BEGIN
 
         IF @PrevCafPin IS NULL
         BEGIN
-            INSERT INTO dbo.tbl_Industry_BasicCafDetails_History
-            (
-                PreviousBusinessEntity, CurrentBusinessEntity,
-                PreviousBusinessEntityType, CurrentBusinessEntityType,
-                PreviousSiteAddress, CurrentSiteAddress,
-                PreviousDistrict, CurrentDistrict,
-                PreviousBlock, CurrentBlock,
-                PreviousVillage, CurrentVillage,
-                PreviousCafPin, CurrentCafPin,
-                PreviousCafType, CurrentCafType, PanNo,
-                Status, ProcessedOn
-            )
-            VALUES
-            (
-                NULL, @CurrentBusinessEntity,
-                NULL, @CurrentBusinessEntityType,
-                NULL, @CurrentSiteAddress,
-                NULL, @CurrentDistrict,
-                NULL, @CurrentBlock,
-                NULL, @CurrentVillage,
-                NULL, @CurrentCafPin,
-                NULL, @CurrentCafType,@PanNo,
-                1, GETDATE()
-            );
 
-            SET @IsHistoryChanged = 1;
-            EXEC sp_UpsertIndustryBasicCafDetailsHistory_MainTablesUpdate
-                @CurrentBusinessEntity,
-                @CurrentBusinessEntityType,
-                @CurrentSiteAddress,
-                @PanNo;
+		    DECLARE @ExistingBusinessEntity     NVARCHAR(500), @ExistingSiteAddress        NVARCHAR(1000);
+
+			SELECT TOP 1
+				@ExistingBusinessEntity     = NameOfAgency,
+				@ExistingSiteAddress        = Address
+			FROM tbl_RegistrationSiteOwner
+			WHERE UserID = @PanNo
+			  AND Status = 1;
+
+
+		   IF ISNULL(@ExistingBusinessEntity, '') <> ISNULL(@CurrentBusinessEntity, '')
+			   OR ISNULL(@ExistingSiteAddress, '')  <> ISNULL(@CurrentSiteAddress, '')
+			BEGIN
+				INSERT INTO dbo.tbl_Industry_BasicCafDetails_History
+				(
+					PreviousBusinessEntity, CurrentBusinessEntity,
+					PreviousBusinessEntityType, CurrentBusinessEntityType,
+					PreviousSiteAddress, CurrentSiteAddress,
+					PreviousDistrict, CurrentDistrict,
+					PreviousBlock, CurrentBlock,
+					PreviousVillage, CurrentVillage,
+					PreviousCafPin, CurrentCafPin,
+					PreviousCafType, CurrentCafType, PanNo,
+					Status, ProcessedOn
+				)
+				VALUES
+				(
+					@ExistingBusinessEntity, @CurrentBusinessEntity,
+					NULL, @CurrentBusinessEntityType,
+					@ExistingSiteAddress, @CurrentSiteAddress,
+					NULL, @CurrentDistrict,
+					NULL, @CurrentBlock,
+					NULL, @CurrentVillage,
+					NULL, @CurrentCafPin,
+					NULL, @CurrentCafType,@PanNo,
+					1, GETDATE()
+				);
+
+				SET @IsHistoryChanged = 1;
+				EXEC sp_UpsertIndustryBasicCafDetailsHistory_MainTablesUpdate
+					@CurrentBusinessEntity,
+					@CurrentBusinessEntityType,
+					@CurrentSiteAddress,
+					@PanNo;
+			END
 
             COMMIT TRANSACTION;
             RETURN;
         END;
 
         IF ISNULL(@PrevBusinessEntity, '') <> ISNULL(@CurrentBusinessEntity, '')
-           OR ISNULL(@PrevBusinessEntityType, '') <> ISNULL(@CurrentBusinessEntityType, '')
+              OR ( @PrevBusinessEntityType IS NOT NULL   AND ISNULL(@PrevBusinessEntityType, '') <> ISNULL(@CurrentBusinessEntityType, '')  )
            OR ISNULL(@PrevSiteAddress, '') <> ISNULL(@CurrentSiteAddress, '')
         BEGIN
+
+		    UPDATE dbo.tbl_Industry_BasicCafDetails_History
+			SET Status = 0
+			WHERE Id = (
+				SELECT TOP 1 Id
+				FROM dbo.tbl_Industry_BasicCafDetails_History
+				WHERE CurrentCafPin = @CurrentCafPin
+				ORDER BY Id DESC
+			);
+
+
             INSERT INTO dbo.tbl_Industry_BasicCafDetails_History
             (
                 PreviousBusinessEntity, CurrentBusinessEntity,
